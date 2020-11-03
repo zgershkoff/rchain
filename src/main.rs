@@ -1,5 +1,5 @@
 mod rchain;
-use rchain::{Blockchain, Block, Transaction, TransactionData};
+use rchain::{Blockchain, Block, Transaction, TransactionData, WorldState};
 use std::borrow::BorrowMut;
 
 fn main() {
@@ -28,9 +28,9 @@ fn main() {
     }
 
     let mut res = bc.append_block(genesis);
-    println!("Genesis block successfully added: {:?}", res);
-    println!("Full blockchain printout");
-    println!("{:#?}", bc);
+    //println!("Genesis block successfully added: {:?}", res);
+    // println!("Full blockchain printout");
+    // println!("{:#?}", bc);
 
     // Transfer 1 token from alice to bob
     let mut block2 = Block::new(bc.get_last_block_hash());
@@ -40,11 +40,45 @@ fn main() {
 
     res = bc.append_block(block2);
     println!("Block added: {:?}", res);
-    println!("Full blockchain printout");
-    println!("{:#?}", bc);
+    // println!("Full blockchain printout");
+    // println!("{:#?}", bc);
     println!("Blockchain valid: {:?}", bc.check_validity());
 
     // Everything is fine until here
+
+    // Now I write stuff
+    println!("Number of tokens on chain: {:?}", bc.get_total_tokens());
+    println!("Transactions for bob: {:?}", bc.get_transactions_for("bob".into()));
+    println!("Transactions for alice: {:?}", bc.get_transactions_for("alice".into()));
+
+    // In the next block, create 8 new users
+    // As the accounts aren't on the chain yet, giving them tokens
+    // will have to be on another block
+    let new_users = ["carol", "dave", "ed", "frank", "gertrude", "ilhan"];
+    let mut block3 = Block::new(bc.get_last_block_hash());
+
+    for user in &new_users {
+        let create_transaction = Transaction::new(user.to_string(),
+                                                 TransactionData::CreateUserAccount(user.to_string()),
+                                                 0);
+        block3.add_transaction(create_transaction);
+    }
+    res = bc.append_block(block3);
+
+    // Since this blockchain doesn't allow new tokens after genesis, alice will share
+    let mut block4 = Block::new(bc.get_last_block_hash());
+    for user in &new_users {
+        let token_action = Transaction::new("alice".into(),
+            TransactionData::TransferTokens {to: user.to_string(), amount: 5000}, 0);
+
+        block4.add_transaction(token_action);
+    }
+
+    res = bc.append_block(block4);
+    println!("Block added: {:?}", res);
+    println!("Full blockchain printout");
+    println!("{:#?}", bc);
+    println!("Blockchain valid: {:?}", bc.check_validity());
 
     // Attack I: changing a transaction
     // Let's tamper the block chain. Maybe bob was not satisfied with the amount of coins alice sent

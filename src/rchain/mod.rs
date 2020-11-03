@@ -6,7 +6,9 @@ use std::convert::Into;
 use std::time::SystemTime;
 use blake2::{Blake2b, Digest};
 use std::string::String;
-use std::convert::From;
+//use std::convert::From;
+
+use std::convert::{From, TryFrom};
 
 
 /// The actual Blockchain container
@@ -42,6 +44,12 @@ pub trait WorldState {
 
     /// Will add a new account
     fn create_account(&mut self, id: String, account_type: AccountType) -> Result<(), &'static str>;
+
+    /// Counts all tokens ever mined on the chain
+    fn get_total_tokens(&self) -> u128;
+
+    /// Returns a vector of (block number, Transaction)
+    fn get_transactions_for(&self, id: String) -> Vec<(u128, &Transaction)>;
 }
 
 /// One single part of the blockchain.
@@ -293,6 +301,49 @@ impl WorldState for Blockchain {
             Err("User already exists! (Code: 934823094)")
         };
     }
+
+    fn get_total_tokens(&self) -> u128 {
+        let mut tokens: u128 = 0;
+        // iterate through the blocks
+        for block in self.blocks.iter() {
+            // look at each transaction
+            for transaction in block.transactions.iter() {
+                // check transaction type
+                match transaction.record {
+                    // if CreateTokens, add amount to total
+                    TransactionData::CreateTokens { receiver: _, amount } => {
+                        tokens += amount;
+                    }
+                    _ => {} // ignore remaining cases
+                }
+            }
+        }
+        tokens
+    }
+
+    fn get_transactions_for(&self, id: String) -> Vec<(u128, &Transaction)> {
+        let mut result: Vec<(u128, &Transaction)> = Vec::new();
+        // iterate through the blocks
+        for (i, block) in self.blocks.iter().enumerate() {
+            // look at each transaction
+            for transaction in block.transactions.iter() {
+                // check transaction type
+                if transaction.from == *id {
+                    /// Warning! This is failable, if the number of blocks
+                    /// exceeds a 128-bit integer.
+                    /// This example chain is unlikely to have 10^40 transactions.
+                    /// (That would take 10^30 years at 10 transactions per sec.)
+                    /// For chains that big, it makes more sense to read from
+                    /// newest block to oldest, with measures to truncate the
+                    /// amount of data required.
+                    result.push((u128::try_from(i).unwrap(), transaction))
+                }
+            }
+        }
+        result
+    }
+
+
 }
 
 impl Block {
@@ -372,8 +423,16 @@ impl Transaction {
         if let Some(_account) = world_state.get_account_by_id(&self.from) {
             // Do some more checkups later on...
         } else {
-            if !is_initial {
-                return Err("Account does not exist (Code: 93482390)");
+            match &self.record {
+                // if the transaction is a new account, continue
+                TransactionData::CreateUserAccount(account) => {}
+
+                // otherwise, fail if account doesn't exist
+                _ => {
+                    if !is_initial {
+                        return Err("Account does not exist (Code: 93482390)");
+                    }
+                }
             }
         }
 
